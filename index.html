@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GIS Viewer — Login</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #dbeafe;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .card {
+      background: #ffffff;
+      border: 1px solid #bfdbfe;
+      border-radius: 12px;
+      padding: 36px 32px;
+      width: 360px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+    }
+    h1 {
+      font-size: 1rem;
+      color: #0369a1;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      text-align: center;
+      margin-bottom: 6px;
+    }
+    .subtitle {
+      font-size: 0.78rem;
+      color: #64a0c8;
+      text-align: center;
+      margin-bottom: 28px;
+    }
+    .tabs {
+      display: flex;
+      border-bottom: 2px solid #bfdbfe;
+      margin-bottom: 24px;
+    }
+    .tab {
+      flex: 1;
+      text-align: center;
+      padding: 8px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      color: #64a0c8;
+      font-weight: 600;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: all 0.2s;
+    }
+    .tab.active { color: #0369a1; border-bottom-color: #0369a1; }
+    .form { display: none; flex-direction: column; gap: 14px; }
+    .form.active { display: flex; }
+    input {
+      padding: 10px 12px;
+      border: 1px solid #93c5fd;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      color: #1e3a5f;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus { border-color: #0284c7; }
+    input::placeholder { color: #93c5fd; }
+    button[type="submit"] {
+      padding: 11px;
+      background: #0284c7;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button[type="submit"]:hover { background: #0369a1; }
+    .forgot {
+      text-align: right;
+      font-size: 0.75rem;
+      color: #0284c7;
+      cursor: pointer;
+      margin-top: -6px;
+    }
+    .forgot:hover { text-decoration: underline; }
+    .msg {
+      font-size: 0.78rem;
+      text-align: center;
+      min-height: 18px;
+      padding: 4px 0;
+    }
+    .msg.error { color: #dc2626; }
+    .msg.success { color: #16a34a; }
+    .btn-loader {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 11px;
+      background: #0284c7;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 0.88rem;
+      font-weight: 700;
+    }
+    .btn-loader.active { display: flex; }
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <h1>GIS Monitoring Dashboard</h1>
+  <p class="subtitle">Canal Irrigation Viewer</p>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('login')">Login</div>
+    <div class="tab" onclick="switchTab('register')">Register</div>
+  </div>
+
+  <!-- LOGIN FORM -->
+  <form class="form active" id="login-form" onsubmit="handleLogin(event)">
+    <input type="email" id="login-email" placeholder="Email" required/>
+    <input type="password" id="login-pass" placeholder="Password" required/>
+    <div class="forgot" onclick="handleForgot()">Forgot password?</div>
+    <button type="submit" id="login-btn">Login</button>
+    <div class="btn-loader" id="login-loader"><div class="spinner"></div> Logging in...</div>
+    <div class="msg" id="login-msg"></div>
+  </form>
+
+  <!-- REGISTER FORM -->
+  <form class="form" id="register-form" onsubmit="handleRegister(event)">
+    <input type="email" id="reg-email" placeholder="Email" required/>
+    <input type="password" id="reg-pass" placeholder="Password (min 6 chars)" required minlength="6"/>
+    <input type="password" id="reg-pass2" placeholder="Confirm Password" required minlength="6"/>
+    <button type="submit" id="reg-btn">Register</button>
+    <div class="btn-loader" id="reg-loader"><div class="spinner"></div> Creating account...</div>
+    <div class="msg" id="reg-msg"></div>
+  </form>
+
+  <!-- VERIFY WAITING SCREEN -->
+  <div id="verify-screen" style="display:none; flex-direction:column; gap:14px; text-align:center;">
+    <div style="font-size:2.5rem;">📧</div>
+    <p style="font-size:0.88rem; color:#0369a1; font-weight:700;">Verification email sent!</p>
+    <p style="font-size:0.78rem; color:#64a0c8; line-height:1.6;">Check your inbox and click the verification link, then come back here and click the button below.</p>
+    <button type="button" onclick="checkVerified()" style="padding:11px; background:#0284c7; color:#fff; border:none; border-radius:6px; font-size:0.88rem; font-weight:700; cursor:pointer;">✅ I've Verified My Email</button>
+    <p style="font-size:0.72rem; color:#64a0c8;">Didn't receive the email? <span onclick="resendVerification()" style="color:#0284c7; cursor:pointer; text-decoration:underline;">Resend</span></p>
+    <div class="msg" id="verify-msg"></div>
+  </div>
+</div>
+
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail, onAuthStateChanged, sendEmailVerification }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCHba8cGu86pJTZlpAryDbudyKoxjtLjPs",
+    authDomain: "gis-viewer-be5b9.firebaseapp.com",
+    projectId: "gis-viewer-be5b9",
+    storageBucket: "gis-viewer-be5b9.firebasestorage.app",
+    messagingSenderId: "422835311700",
+    appId: "1:422835311700:web:394b19017b59ec6c7289c1"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+
+  let pendingUser = null;
+
+  // If already logged in AND verified, go straight to map
+  onAuthStateChanged(auth, user => {
+    if (user && user.emailVerified) window.location.href = 'map.html';
+  });
+
+  function setMsg(id, text, type) {
+    const el = document.getElementById(id);
+    el.textContent = text;
+    el.className = 'msg ' + type;
+  }
+
+  function setLoader(btnId, loaderId, loading) {
+    document.getElementById(btnId).style.display = loading ? 'none' : 'block';
+    document.getElementById(loaderId).classList.toggle('active', loading);
+  }
+
+  window.handleLogin = async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('login-email').value;
+    const pass  = document.getElementById('login-pass').value;
+    setLoader('login-btn', 'login-loader', true);
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email, pass);
+      if (!cred.user.emailVerified) {
+        pendingUser = cred.user;
+        await auth.signOut();
+        document.getElementById('login-form').style.display = 'none';
+        document.querySelector('.tabs').style.display = 'none';
+        document.getElementById('verify-screen').style.display = 'flex';
+        setMsg('verify-msg', 'Your email is not verified yet. Please check your inbox.', 'error');
+        startVerifyPolling();
+        return;
+      }
+    } catch (err) {
+      setMsg('login-msg', friendlyError(err.code), 'error');
+    }
+    setLoader('login-btn', 'login-loader', false);
+  };
+
+  window.handleRegister = async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('reg-email').value;
+    const pass  = document.getElementById('reg-pass').value;
+    const pass2 = document.getElementById('reg-pass2').value;
+    if (pass !== pass2) { setMsg('reg-msg', 'Passwords do not match.', 'error'); return; }
+    setLoader('reg-btn', 'reg-loader', true);
+    try {
+      const cred = await createUserWithEmailAndPassword(auth, email, pass);
+      await sendEmailVerification(cred.user);
+      pendingUser = cred.user;
+      document.getElementById('register-form').style.display = 'none';
+      document.querySelector('.tabs').style.display = 'none';
+      document.getElementById('verify-screen').style.display = 'flex';
+      startVerifyPolling();
+    } catch (err) {
+      setMsg('reg-msg', friendlyError(err.code), 'error');
+      setLoader('reg-btn', 'reg-loader', false);
+    }
+  };
+
+  // Auto-check every 4 seconds if user verified
+  let verifyInterval = null;
+  function startVerifyPolling() {
+    verifyInterval = setInterval(async () => {
+      if (!pendingUser) return;
+      await pendingUser.reload();
+      if (pendingUser.emailVerified) {
+        clearInterval(verifyInterval);
+        window.location.href = 'map.html';
+      }
+    }, 4000);
+  }
+
+  window.checkVerified = async () => {
+    if (!pendingUser) { setMsg('verify-msg', 'Session expired. Please register again.', 'error'); return; }
+    await pendingUser.reload();
+    if (pendingUser.emailVerified) {
+      clearInterval(verifyInterval);
+      window.location.href = 'map.html';
+    } else {
+      setMsg('verify-msg', 'Email not verified yet. Please click the link in your inbox.', 'error');
+    }
+  };
+
+  window.resendVerification = async () => {
+    if (!pendingUser) { setMsg('verify-msg', 'Session expired. Please register again.', 'error'); return; }
+    try {
+      await sendEmailVerification(pendingUser);
+      setMsg('verify-msg', 'Verification email resent!', 'success');
+    } catch (err) {
+      setMsg('verify-msg', friendlyError(err.code), 'error');
+    }
+  };
+
+  window.handleForgot = async () => {
+    const email = document.getElementById('login-email').value;
+    if (!email) { setMsg('login-msg', 'Enter your email first.', 'error'); return; }
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setMsg('login-msg', 'Reset email sent! Check your inbox.', 'success');
+    } catch (err) {
+      setMsg('login-msg', friendlyError(err.code), 'error');
+    }
+  };
+
+  function friendlyError(code) {
+    const map = {
+      'auth/user-not-found': 'No account found with this email.',
+      'auth/wrong-password': 'Incorrect password.',
+      'auth/invalid-credential': 'Invalid email or password.',
+      'auth/email-already-in-use': 'This email is already registered.',
+      'auth/weak-password': 'Password must be at least 6 characters.',
+      'auth/invalid-email': 'Please enter a valid email address.',
+      'auth/too-many-requests': 'Too many attempts. Try again later.',
+    };
+    return map[code] || 'Something went wrong. Please try again.';
+  }
+</script>
+
+<script>
+  function switchTab(tab) {
+    document.querySelectorAll('.tab').forEach((t, i) => {
+      t.classList.toggle('active', (i === 0 && tab === 'login') || (i === 1 && tab === 'register'));
+    });
+    document.getElementById('login-form').classList.toggle('active', tab === 'login');
+    document.getElementById('register-form').classList.toggle('active', tab === 'register');
+  }
+</script>
+
+</body>
+</html>
