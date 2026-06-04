@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GIS Viewer</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', sans-serif; display: flex; height: 100vh; overflow: hidden; }
+
+    /* ── LEFT PANEL ── */
+    #panel {
+      width: 270px;
+      min-width: 270px;
+      height: 100vh;
+      background: #f0f7ff;
+      color: #1e3a5f;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      z-index: 1000;
+      box-shadow: 3px 0 12px rgba(0,0,0,0.15);
+      transition: width 0.3s, min-width 0.3s;
+    }
+
+    #panel.collapsed { width: 0; min-width: 0; }
+
+    #panel-header {
+      padding: 14px 12px;
+      background: #dbeafe;
+      border-bottom: 1px solid #bfdbfe;
+      flex-shrink: 0;
+    }
+
+    #panel-header h2 {
+      font-size: 0.78rem;
+      color: #1d6fa4;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin-bottom: 10px;
+      white-space: nowrap;
+    }
+
+    #search-box {
+      width: 100%;
+      padding: 7px 10px;
+      border-radius: 6px;
+      border: 1px solid #93c5fd;
+      background: #ffffff;
+      color: #1e3a5f;
+      font-size: 0.82rem;
+      outline: none;
+    }
+    #search-box::placeholder { color: #93c5fd; }
+
+    #layer-list { flex: 1; overflow-y: auto; padding-bottom: 20px; }
+    #layer-list::-webkit-scrollbar { width: 4px; }
+    #layer-list::-webkit-scrollbar-thumb { background: #93c5fd; border-radius: 4px; }
+
+    /* ROI Dropdown */
+    .roi-wrap {
+      position: relative;
+      padding: 10px 12px;
+      background: #dbeafe;
+      border-bottom: 1px solid #bfdbfe;
+    }
+    .roi-btn {
+      width: 100%;
+      padding: 9px 14px;
+      background: #ffffff;
+      border: 1px solid #38bdf8;
+      border-radius: 6px;
+      color: #0369a1;
+      font-size: 0.88rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      letter-spacing: 0.5px;
+    }
+    .roi-btn:hover { background: #e0f2fe; }
+    .roi-dropdown {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 12px;
+      right: 12px;
+      background: #ffffff;
+      border: 1px solid #bfdbfe;
+      border-radius: 6px;
+      z-index: 999;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .roi-wrap:hover .roi-dropdown { display: block; }
+    .roi-option {
+      padding: 10px 16px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      color: #0369a1;
+      border-bottom: 1px solid #e0f2fe;
+      transition: background 0.15s;
+    }
+    .roi-option:last-child { border-bottom: none; }
+    .roi-option:hover { background: #e0f2fe; color: #0284c7; }
+    .roi-option.active { color: #0284c7; font-weight: 700; background: #bae6fd; }
+
+    /* Sub group */
+    .grp-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 14px 8px 14px;
+      background: #e0f2fe;
+      cursor: pointer;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: #0369a1;
+      border-bottom: 1px solid #bfdbfe;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .grp-header:hover { background: #bae6fd; }
+    .grp-body { display: none; background: #f8fbff; }
+    .grp-body.open { display: block; }
+
+    /* Canal sub-tabs inside each group */
+    .canal-tabs {
+      display: flex;
+      border-bottom: 1px solid #bfdbfe;
+      background: #f0f7ff;
+    }
+    .canal-tab {
+      flex: 1;
+      padding: 5px 0;
+      text-align: center;
+      font-size: 0.73rem;
+      font-weight: 600;
+      color: #0369a1;
+      cursor: pointer;
+      border-right: 1px solid #bfdbfe;
+      user-select: none;
+      transition: background 0.15s;
+    }
+    .canal-tab:last-child { border-right: none; }
+    .canal-tab:hover { background: #bae6fd; }
+    .canal-tab.active { background: #0284c7; color: #fff; }
+    .canal-pane { display: none; }
+    .canal-pane.active { display: block; }
+
+    /* Layer row */
+    .layer-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 14px 7px 18px;
+      border-bottom: 1px solid #e0f2fe;
+      cursor: pointer;
+    }
+    .layer-row:hover { background: #e0f2fe; }
+    .layer-row input[type="checkbox"] { accent-color: #0284c7; cursor: pointer; flex-shrink: 0; }
+    .layer-row label { font-size: 0.8rem; color: #1e3a5f; cursor: pointer; white-space: nowrap; }
+
+    /* Opacity slider */
+    .opacity-row {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 14px 6px 18px;
+      background: #f0f7ff;
+    }
+    .opacity-row.visible { display: flex; }
+    .opacity-row label { font-size: 0.68rem; color: #64a0c8; white-space: nowrap; }
+    .opacity-row input[type=range] {
+      flex: 1; accent-color: #0284c7; height: 3px; cursor: pointer;
+    }
+    .opacity-val { font-size: 0.68rem; color: #0284c7; width: 28px; text-align: right; }
+
+    /* Year pills */
+    .year-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      padding: 5px 14px 8px 18px;
+      background: #f0f7ff;
+    }
+    .yr {
+      padding: 2px 9px;
+      border-radius: 20px;
+      border: 1px solid #38bdf8;
+      background: transparent;
+      color: #0284c7;
+      font-size: 0.7rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .yr:hover, .yr.active { background: #0284c7; color: #fff; }
+
+    /* ── TOGGLE BUTTON ── */
+    #toggle-btn {
+      position: absolute;
+      top: 50%;
+      left: 270px;
+      transform: translateY(-50%);
+      z-index: 1001;
+      background: #dbeafe;
+      color: #0284c7;
+      border: none;
+      padding: 12px 5px;
+      cursor: pointer;
+      border-radius: 0 6px 6px 0;
+      font-size: 0.9rem;
+      transition: left 0.3s;
+      box-shadow: 3px 0 8px rgba(0,0,0,0.15);
+    }
+    #toggle-btn:hover { background: #bae6fd; }
+
+    /* ── TOP BAR ── */
+    #topbar {
+      position: absolute;
+      top: 0; left: 270px; right: 0;
+      height: 46px;
+      background: rgba(219,234,254,0.97);
+      z-index: 999;
+      display: flex;
+      align-items: center;
+      padding: 0 18px;
+      gap: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      transition: left 0.3s;
+    }
+    #topbar h1 { font-size: 0.95rem; color: #0369a1; font-weight: 700; letter-spacing: 1px; flex: 1; white-space: nowrap; }
+
+    /* ── COORDS BAR ── */
+    #coords-bar {
+      position: absolute;
+      bottom: 0;
+      left: 270px;
+      right: 0;
+      height: 28px;
+      background: rgba(219,234,254,0.95);
+      z-index: 999;
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      font-size: 0.78rem;
+      color: #0369a1;
+      box-shadow: 0 -2px 6px rgba(0,0,0,0.08);
+      transition: left 0.3s;
+    }
+
+    /* ── MAP ── */
+    #map { flex: 1; height: 100vh; min-width: 0; }
+
+    /* push leaflet top-right controls below topbar */
+    .leaflet-top.leaflet-right { margin-top: 50px; }
+  </style>
+</head>
+<body>
+
+<!-- LEFT PANEL -->
+<div id="panel">
+  <div id="panel-header">
+    <h2>Layer Control</h2>
+    <input type="text" id="search-box" placeholder="Search layers..." oninput="filterLayers(this.value)" />
+  </div>
+
+  <!-- ROI Hover Dropdown -->
+  <div class="roi-wrap">
+    <div class="roi-btn">
+      <span>ROI — Select Canal</span> <span>▾</span>
+    </div>
+    <div class="roi-dropdown">
+      <div class="roi-option active" onclick="selectROI('rbc',this)">RBC — Right Bank Canal</div>
+      <div class="roi-option" onclick="selectROI('lbc',this)">LBC — Left Bank Canal</div>
+      <div class="roi-option" onclick="selectROI('both',this)">Both (LBC + RBC)</div>
+    </div>
+  </div>
+  <!-- ROI Opacity Slider -->
+  <div id="roi-opacity-row" style="display:none;align-items:center;gap:8px;padding:6px 14px 8px 14px;background:#dbeafe;border-bottom:1px solid #bfdbfe;">
+    <label style="font-size:0.68rem;color:#64a0c8;white-space:nowrap;">ROI Opacity</label>
+    <input type="range" min="0" max="100" value="25" style="flex:1;accent-color:#0284c7;height:3px;cursor:pointer;" oninput="setROIOpacity(this.value)">
+    <span id="roi-opacity-val" style="font-size:0.68rem;color:#0284c7;width:28px;text-align:right;">25%</span>
+  </div>
+
+  <div id="layer-list">
+
+    <!-- LULC -->
+    <div class="grp-header" onclick="toggleGrp(this)">LULC <span>▶</span></div>
+    <div class="grp-body">
+      <div class="layer-row"><input type="checkbox" id="lulc_main" onchange="toggleLayer('lulc_main',this)"><label for="lulc_main">LULC</label></div>
+      <div class="opacity-row" id="op_lulc_main"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('lulc_main',this.value)"><span class="opacity-val">100%</span></div>
+      <div class="year-row">
+        <button class="yr" onclick="setYear('lulc_main',2018,this)">2018</button>
+        <button class="yr" onclick="setYear('lulc_main',2019,this)">2019</button>
+        <button class="yr" onclick="setYear('lulc_main',2020,this)">2020</button>
+        <button class="yr" onclick="setYear('lulc_main',2021,this)">2021</button>
+        <button class="yr" onclick="setYear('lulc_main',2022,this)">2022</button>
+        <button class="yr" onclick="setYear('lulc_main',2023,this)">2023</button>
+      </div>
+    </div>
+
+    <!-- Crop Map -->
+    <div class="grp-header" onclick="toggleGrp(this)">Crop Map <span>▶</span></div>
+    <div class="grp-body">
+      <div class="layer-row"><input type="checkbox" id="cropmap_main" onchange="toggleLayer('cropmap_main',this)"><label for="cropmap_main">Crop Map</label></div>
+      <div class="opacity-row" id="op_cropmap_main"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('cropmap_main',this.value)"><span class="opacity-val">100%</span></div>
+      <div class="year-row">
+        <button class="yr" onclick="setYear('cropmap_main',2018,this)">2018</button>
+        <button class="yr" onclick="setYear('cropmap_main',2019,this)">2019</button>
+        <button class="yr" onclick="setYear('cropmap_main',2020,this)">2020</button>
+        <button class="yr" onclick="setYear('cropmap_main',2021,this)">2021</button>
+        <button class="yr" onclick="setYear('cropmap_main',2022,this)">2022</button>
+        <button class="yr" onclick="setYear('cropmap_main',2023,this)">2023</button>
+      </div>
+    </div>
+
+    <!-- Canal (RBC | LBC | Both) -->
+    <div class="grp-header" onclick="toggleGrp(this)">Canal <span>▶</span></div>
+    <div class="grp-body">
+      <div class="canal-tabs">
+        <div class="canal-tab active" onclick="switchCanalTab('canal','rbc',this)">RBC</div>
+        <div class="canal-tab" onclick="switchCanalTab('canal','lbc',this)">LBC</div>
+        <div class="canal-tab" onclick="switchCanalTab('canal','both',this)">Both</div>
+      </div>
+      <!-- RBC pane -->
+      <div class="canal-pane active" id="canal-rbc">
+        <div class="layer-row"><input type="checkbox" id="rbc_canal" onchange="toggleLayer('rbc_canal',this)"><label for="rbc_canal">RBC Canal</label></div>
+        <div class="opacity-row" id="op_rbc_canal"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('rbc_canal',this.value)"><span class="opacity-val">100%</span></div>
+      </div>
+      <!-- LBC pane -->
+      <div class="canal-pane" id="canal-lbc">
+        <div class="layer-row"><input type="checkbox" id="lbc_canal" onchange="toggleLayer('lbc_canal',this)"><label for="lbc_canal">LBC Canal</label></div>
+        <div class="opacity-row" id="op_lbc_canal"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('lbc_canal',this.value)"><span class="opacity-val">100%</span></div>
+      </div>
+      <!-- Both pane -->
+      <div class="canal-pane" id="canal-both">
+        <div class="layer-row"><input type="checkbox" id="both_canal_rbc" onchange="toggleLayer('rbc_canal',this)"><label for="both_canal_rbc">RBC Canal</label></div>
+        <div class="opacity-row" id="op_both_canal_rbc"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('rbc_canal',this.value)"><span class="opacity-val">100%</span></div>
+        <div class="layer-row"><input type="checkbox" id="both_canal_lbc" onchange="toggleLayer('lbc_canal',this)"><label for="both_canal_lbc">LBC Canal</label></div>
+        <div class="opacity-row" id="op_both_canal_lbc"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('lbc_canal',this.value)"><span class="opacity-val">100%</span></div>
+      </div>
+    </div>
+
+    <!-- Hydrological (RBC | LBC | Both) -->
+    <div class="grp-header" onclick="toggleGrp(this)">Hydrological <span>▶</span></div>
+    <div class="grp-body">
+      <div class="canal-tabs">
+        <div class="canal-tab active" onclick="switchCanalTab('hydro','rbc',this)">RBC</div>
+        <div class="canal-tab" onclick="switchCanalTab('hydro','lbc',this)">LBC</div>
+        <div class="canal-tab" onclick="switchCanalTab('hydro','both',this)">Both</div>
+      </div>
+      <div class="canal-pane active" id="hydro-rbc">
+        <div class="layer-row"><input type="checkbox" id="rbc_hydro" onchange="toggleLayer('rbc_hydro',this)"><label for="rbc_hydro">Hydro SHP</label></div>
+        <div class="opacity-row" id="op_rbc_hydro"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('rbc_hydro',this.value)"><span class="opacity-val">100%</span></div>
+      </div>
+      <div class="canal-pane" id="hydro-lbc">
+        <div class="layer-row"><input type="checkbox" id="lbc_hydro" onchange="toggleLayer('lbc_hydro',this)"><label for="lbc_hydro">Hydro SHP</label></div>
+        <div class="opacity-row" id="op_lbc_hydro"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('lbc_hydro',this.value)"><span class="opacity-val">100%</span></div>
+      </div>
+      <div class="canal-pane" id="hydro-both">
+        <div class="layer-row"><input type="checkbox" id="both_hydro_rbc" onchange="toggleLayer('rbc_hydro',this)"><label for="both_hydro_rbc">RBC Hydro</label></div>
+        <div class="opacity-row" id="op_both_hydro_rbc"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('rbc_hydro',this.value)"><span class="opacity-val">100%</span></div>
+        <div class="layer-row"><input type="checkbox" id="both_hydro_lbc" onchange="toggleLayer('lbc_hydro',this)"><label for="both_hydro_lbc">LBC Hydro</label></div>
+        <div class="opacity-row" id="op_both_hydro_lbc"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('lbc_hydro',this.value)"><span class="opacity-val">100%</span></div>
+      </div>
+    </div>
+
+    <!-- Indicators (RBC | LBC | Both) -->
+    <div class="grp-header" onclick="toggleGrp(this)">Indicators <span>▶</span></div>
+    <div class="grp-body">
+      <div class="canal-tabs">
+        <div class="canal-tab active" onclick="switchCanalTab('ind','rbc',this)">RBC</div>
+        <div class="canal-tab" onclick="switchCanalTab('ind','lbc',this)">LBC</div>
+        <div class="canal-tab" onclick="switchCanalTab('ind','both',this)">Both</div>
+      </div>
+      <!-- RBC -->
+      <div class="canal-pane active" id="ind-rbc">
+        <div class="layer-row"><input type="checkbox" id="rbc_eod" onchange="toggleLayer('rbc_eod',this)"><label for="rbc_eod">EOD</label></div>
+        <div class="opacity-row" id="op_rbc_eod"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('rbc_eod',this.value)"><span class="opacity-val">100%</span></div>
+        <div class="year-row">
+          <button class="yr" onclick="setYear('rbc_eod',2018,this)">2018</button><button class="yr" onclick="setYear('rbc_eod',2019,this)">2019</button><button class="yr" onclick="setYear('rbc_eod',2020,this)">2020</button><button class="yr" onclick="setYear('rbc_eod',2021,this)">2021</button><button class="yr" onclick="setYear('rbc_eod',2022,this)">2022</button>
+        </div>
+        <div class="layer-row"><input type="checkbox" id="rbc_ros" onchange="toggleLayer('rbc_ros',this)"><label for="rbc_ros">ROS</label></div>
+        <div class="opacity-row" id="op_rbc_ros"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('rbc_ros',this.value)"><span class="opacity-val">100%</span></div>
+        <div class="year-row">
+          <button class="yr" onclick="setYear('rbc_ros',2018,this)">2018</button><button class="yr" onclick="setYear('rbc_ros',2019,this)">2019</button><button class="yr" onclick="setYear('rbc_ros',2020,this)">2020</button><button class="yr" onclick="setYear('rbc_ros',2021,this)">2021</button><button class="yr" onclick="setYear('rbc_ros',2022,this)">2022</button>
+        </div>
+        <div class="layer-row"><input type="checkbox" id="rbc_wps" onchange="toggleLayer('rbc_wps',this)"><label for="rbc_wps">WPS</label></div>
+        <div class="opacity-row" id="op_rbc_wps"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('rbc_wps',this.value)"><span class="opacity-val">100%</span></div>
+        <div class="year-row">
+          <button class="yr" onclick="setYear('rbc_wps',2018,this)">2018</button><button class="yr" onclick="setYear('rbc_wps',2019,this)">2019</button><button class="yr" onclick="setYear('rbc_wps',2020,this)">2020</button><button class="yr" onclick="setYear('rbc_wps',2021,this)">2021</button><button class="yr" onclick="setYear('rbc_wps',2022,this)">2022</button>
+        </div>
+      </div>
+      <!-- LBC -->
+      <div class="canal-pane" id="ind-lbc">
+        <div class="layer-row"><input type="checkbox" id="lbc_eod" onchange="toggleLayer('lbc_eod',this)"><label for="lbc_eod">EOD</label></div>
+        <div class="opacity-row" id="op_lbc_eod"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('lbc_eod',this.value)"><span class="opacity-val">100%</span></div>
+        <div class="year-row">
+          <button class="yr" onclick="setYear('lbc_eod',2018,this)">2018</button><button class="yr" onclick="setYear('lbc_eod',2019,this)">2019</button><button class="yr" onclick="setYear('lbc_eod',2020,this)">2020</button><button class="yr" onclick="setYear('lbc_eod',2021,this)">2021</button><button class="yr" onclick="setYear('lbc_eod',2022,this)">2022</button>
+        </div>
+        <div class="layer-row"><input type="checkbox" id="lbc_ros" onchange="toggleLayer('lbc_ros',this)"><label for="lbc_ros">ROS</label></div>
+        <div class="opacity-row" id="op_lbc_ros"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('lbc_ros',this.value)"><span class="opacity-val">100%</span></div>
+        <div class="year-row">
+          <button class="yr" onclick="setYear('lbc_ros',2018,this)">2018</button><button class="yr" onclick="setYear('lbc_ros',2019,this)">2019</button><button class="yr" onclick="setYear('lbc_ros',2020,this)">2020</button><button class="yr" onclick="setYear('lbc_ros',2021,this)">2021</button><button class="yr" onclick="setYear('lbc_ros',2022,this)">2022</button>
+        </div>
+        <div class="layer-row"><input type="checkbox" id="lbc_wps" onchange="toggleLayer('lbc_wps',this)"><label for="lbc_wps">WPS</label></div>
+        <div class="opacity-row" id="op_lbc_wps"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('lbc_wps',this.value)"><span class="opacity-val">100%</span></div>
+        <div class="year-row">
+          <button class="yr" onclick="setYear('lbc_wps',2018,this)">2018</button><button class="yr" onclick="setYear('lbc_wps',2019,this)">2019</button><button class="yr" onclick="setYear('lbc_wps',2020,this)">2020</button><button class="yr" onclick="setYear('lbc_wps',2021,this)">2021</button><button class="yr" onclick="setYear('lbc_wps',2022,this)">2022</button>
+        </div>
+      </div>
+      <!-- Both -->
+      <div class="canal-pane" id="ind-both">
+        <div style="padding:4px 14px;font-size:0.72rem;color:#0369a1;font-weight:600;background:#e0f2fe;">RBC</div>
+        <div class="layer-row"><input type="checkbox" id="both_ind_rbc_eod" onchange="toggleLayer('rbc_eod',this)"><label for="both_ind_rbc_eod">EOD</label></div>
+        <div class="opacity-row" id="op_both_ind_rbc_eod"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('rbc_eod',this.value)"><span class="opacity-val">100%</span></div>
+        <div class="year-row"><button class="yr" onclick="setYear('rbc_eod',2018,this)">2018</button><button class="yr" onclick="setYear('rbc_eod',2019,this)">2019</button><button class="yr" onclick="setYear('rbc_eod',2020,this)">2020</button><button class="yr" onclick="setYear('rbc_eod',2021,this)">2021</button><button class="yr" onclick="setYear('rbc_eod',2022,this)">2022</button></div>
+        <div class="layer-row"><input type="checkbox" id="both_ind_rbc_ros" onchange="toggleLayer('rbc_ros',this)"><label for="both_ind_rbc_ros">ROS</label></div>
+        <div class="opacity-row" id="op_both_ind_rbc_ros"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('rbc_ros',this.value)"><span class="opacity-val">100%</span></div>
+        <div class="year-row"><button class="yr" onclick="setYear('rbc_ros',2018,this)">2018</button><button class="yr" onclick="setYear('rbc_ros',2019,this)">2019</button><button class="yr" onclick="setYear('rbc_ros',2020,this)">2020</button><button class="yr" onclick="setYear('rbc_ros',2021,this)">2021</button><button class="yr" onclick="setYear('rbc_ros',2022,this)">2022</button></div>
+        <div class="layer-row"><input type="checkbox" id="both_ind_rbc_wps" onchange="toggleLayer('rbc_wps',this)"><label for="both_ind_rbc_wps">WPS</label></div>
+        <div class="opacity-row" id="op_both_ind_rbc_wps"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('rbc_wps',this.value)"><span class="opacity-val">100%</span></div>
+        <div class="year-row"><button class="yr" onclick="setYear('rbc_wps',2018,this)">2018</button><button class="yr" onclick="setYear('rbc_wps',2019,this)">2019</button><button class="yr" onclick="setYear('rbc_wps',2020,this)">2020</button><button class="yr" onclick="setYear('rbc_wps',2021,this)">2021</button><button class="yr" onclick="setYear('rbc_wps',2022,this)">2022</button></div>
+        <div style="padding:4px 14px;font-size:0.72rem;color:#0369a1;font-weight:600;background:#e0f2fe;">LBC</div>
+        <div class="layer-row"><input type="checkbox" id="both_ind_lbc_eod" onchange="toggleLayer('lbc_eod',this)"><label for="both_ind_lbc_eod">EOD</label></div>
+        <div class="opacity-row" id="op_both_ind_lbc_eod"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('lbc_eod',this.value)"><span class="opacity-val">100%</span></div>
+        <div class="year-row"><button class="yr" onclick="setYear('lbc_eod',2018,this)">2018</button><button class="yr" onclick="setYear('lbc_eod',2019,this)">2019</button><button class="yr" onclick="setYear('lbc_eod',2020,this)">2020</button><button class="yr" onclick="setYear('lbc_eod',2021,this)">2021</button><button class="yr" onclick="setYear('lbc_eod',2022,this)">2022</button></div>
+        <div class="layer-row"><input type="checkbox" id="both_ind_lbc_ros" onchange="toggleLayer('lbc_ros',this)"><label for="both_ind_lbc_ros">ROS</label></div>
+        <div class="opacity-row" id="op_both_ind_lbc_ros"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('lbc_ros',this.value)"><span class="opacity-val">100%</span></div>
+        <div class="year-row"><button class="yr" onclick="setYear('lbc_ros',2018,this)">2018</button><button class="yr" onclick="setYear('lbc_ros',2019,this)">2019</button><button class="yr" onclick="setYear('lbc_ros',2020,this)">2020</button><button class="yr" onclick="setYear('lbc_ros',2021,this)">2021</button><button class="yr" onclick="setYear('lbc_ros',2022,this)">2022</button></div>
+        <div class="layer-row"><input type="checkbox" id="both_ind_lbc_wps" onchange="toggleLayer('lbc_wps',this)"><label for="both_ind_lbc_wps">WPS</label></div>
+        <div class="opacity-row" id="op_both_ind_lbc_wps"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('lbc_wps',this.value)"><span class="opacity-val">100%</span></div>
+        <div class="year-row"><button class="yr" onclick="setYear('lbc_wps',2018,this)">2018</button><button class="yr" onclick="setYear('lbc_wps',2019,this)">2019</button><button class="yr" onclick="setYear('lbc_wps',2020,this)">2020</button><button class="yr" onclick="setYear('lbc_wps',2021,this)">2021</button><button class="yr" onclick="setYear('lbc_wps',2022,this)">2022</button></div>
+      </div>
+    </div>
+
+    <!-- Rainfall (RBC | LBC | Both) -->
+    <div class="grp-header" onclick="toggleGrp(this)">Rainfall <span>▶</span></div>
+    <div class="grp-body">
+      <div class="canal-tabs">
+        <div class="canal-tab active" onclick="switchCanalTab('rain','rbc',this)">RBC</div>
+        <div class="canal-tab" onclick="switchCanalTab('rain','lbc',this)">LBC</div>
+        <div class="canal-tab" onclick="switchCanalTab('rain','both',this)">Both</div>
+      </div>
+      <div class="canal-pane active" id="rain-rbc">
+        <div class="layer-row"><input type="checkbox" id="rbc_rain" onchange="toggleLayer('rbc_rain',this)"><label for="rbc_rain">Rainfall</label></div>
+        <div class="opacity-row" id="op_rbc_rain"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('rbc_rain',this.value)"><span class="opacity-val">100%</span></div>
+        <div class="year-row">
+          <button class="yr" onclick="setYear('rbc_rain',2018,this)">2018</button><button class="yr" onclick="setYear('rbc_rain',2019,this)">2019</button><button class="yr" onclick="setYear('rbc_rain',2020,this)">2020</button><button class="yr" onclick="setYear('rbc_rain',2021,this)">2021</button><button class="yr" onclick="setYear('rbc_rain',2022,this)">2022</button>
+        </div>
+      </div>
+      <div class="canal-pane" id="rain-lbc">
+        <div class="layer-row"><input type="checkbox" id="lbc_rain" onchange="toggleLayer('lbc_rain',this)"><label for="lbc_rain">Rainfall</label></div>
+        <div class="opacity-row" id="op_lbc_rain"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('lbc_rain',this.value)"><span class="opacity-val">100%</span></div>
+        <div class="year-row">
+          <button class="yr" onclick="setYear('lbc_rain',2018,this)">2018</button><button class="yr" onclick="setYear('lbc_rain',2019,this)">2019</button><button class="yr" onclick="setYear('lbc_rain',2020,this)">2020</button><button class="yr" onclick="setYear('lbc_rain',2021,this)">2021</button><button class="yr" onclick="setYear('lbc_rain',2022,this)">2022</button>
+        </div>
+      </div>
+      <div class="canal-pane" id="rain-both">
+        <div style="padding:4px 14px;font-size:0.72rem;color:#0369a1;font-weight:600;background:#e0f2fe;">RBC</div>
+        <div class="layer-row"><input type="checkbox" id="both_rain_rbc" onchange="toggleLayer('rbc_rain',this)"><label for="both_rain_rbc">Rainfall</label></div>
+        <div class="opacity-row" id="op_both_rain_rbc"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('rbc_rain',this.value)"><span class="opacity-val">100%</span></div>
+        <div class="year-row"><button class="yr" onclick="setYear('rbc_rain',2018,this)">2018</button><button class="yr" onclick="setYear('rbc_rain',2019,this)">2019</button><button class="yr" onclick="setYear('rbc_rain',2020,this)">2020</button><button class="yr" onclick="setYear('rbc_rain',2021,this)">2021</button><button class="yr" onclick="setYear('rbc_rain',2022,this)">2022</button></div>
+        <div style="padding:4px 14px;font-size:0.72rem;color:#0369a1;font-weight:600;background:#e0f2fe;">LBC</div>
+        <div class="layer-row"><input type="checkbox" id="both_rain_lbc" onchange="toggleLayer('lbc_rain',this)"><label for="both_rain_lbc">Rainfall</label></div>
+        <div class="opacity-row" id="op_both_rain_lbc"><label>Opacity</label><input type="range" min="0" max="100" value="100" oninput="setOpacity('lbc_rain',this.value)"><span class="opacity-val">100%</span></div>
+        <div class="year-row"><button class="yr" onclick="setYear('lbc_rain',2018,this)">2018</button><button class="yr" onclick="setYear('lbc_rain',2019,this)">2019</button><button class="yr" onclick="setYear('lbc_rain',2020,this)">2020</button><button class="yr" onclick="setYear('lbc_rain',2021,this)">2021</button><button class="yr" onclick="setYear('lbc_rain',2022,this)">2022</button></div>
+      </div>
+    </div>
+
+  </div><!-- end layer-list -->
+</div><!-- end panel -->
+
+<!-- TOGGLE PANEL BUTTON -->
+<button id="toggle-btn" onclick="togglePanel()">◀</button>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <h1 style="position:absolute;left:50%;transform:translateX(-50%);">GIS Monitoring Dashboard</h1>
+  <span id="user-email" style="font-size:0.75rem;color:#0369a1;margin-left:auto;"></span>
+  <button onclick="logout()" style="padding:5px 12px;background:#0284c7;color:#fff;border:none;border-radius:6px;font-size:0.78rem;cursor:pointer;font-weight:600;">Logout</button>
+</div>
+
+<!-- COORDS BAR -->
+<div id="coords-bar">Lat: &mdash; &nbsp;|&nbsp; Lng: &mdash;</div>
+
+<!-- MAP -->
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<!-- Firebase Auth Guard -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyCHba8cGu86pJTZlpAryDbudyKoxjtLjPs",
+    authDomain: "gis-viewer-be5b9.firebaseapp.com",
+    projectId: "gis-viewer-be5b9",
+    storageBucket: "gis-viewer-be5b9.firebasestorage.app",
+    messagingSenderId: "422835311700",
+    appId: "1:422835311700:web:394b19017b59ec6c7289c1"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+
+  onAuthStateChanged(auth, user => {
+    if (!user || !user.emailVerified) {
+      window.location.href = 'index.html';
+    } else {
+      document.getElementById('user-email').textContent = user.email;
+    }
+  });
+
+  window.logout = () => signOut(auth).then(() => window.location.href = 'index.html');
+</script>
+<script src="data.js"></script>
+<script src="lulc_2018.js"></script>
+<script src="lulc_2019.js"></script>
+<script src="lulc_2020.js"></script>
+<script src="lulc_2021.js"></script>
+<script src="lulc_2022.js"></script>
+<script src="lulc_2023.js"></script>
+<script src="cropmap_2018.js"></script>
+<script src="cropmap_2019.js"></script>
+<script src="cropmap_2020.js"></script>
+<script src="cropmap_2021.js"></script>
+<script src="cropmap_2022.js"></script>
+<script src="cropmap_2023.js"></script>
+<script src="rbc_canal.js"></script>
+<script src="lbc_canal.js"></script>
+<script>
+  // ── Init Map ──
+  const map = L.map('map', { zoomControl: false }).setView([20.5937, 78.9629], 5);
+
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+  // Base layers
+  const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors'
+  });
+
+  const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© Esri'
+  });
+
+  const labels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© Esri'
+  });
+
+  const hybrid = L.layerGroup([satellite, labels]);
+
+  osm.addTo(map);
+
+  // Base map switcher
+  L.control.layers({ "Street Map": osm, "Satellite": satellite, "Hybrid": hybrid }, {}, { position: 'topright' }).addTo(map);
+
+  // Show coordinates on mousemove
+  map.on('mousemove', (e) => {
+    document.getElementById('coords-bar').textContent =
+      `Lat: ${e.latlng.lat.toFixed(5)}  |  Lng: ${e.latlng.lng.toFixed(5)}`;
+  });
+
+  // ── Embedded GeoJSON Data ──
+  const geoData = {
+    rbc_canal: {"type":"FeatureCollection","name":"1","crs":{"type":"name","properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}},"features":[{"type":"Feature","properties":{"SUB_AREA":137.3,"COAST":0,"DIST_MAIN":852.8},"geometry":{"type":"MultiPolygon","coordinates":[[[[79.454186089675019,21.092354662834641],[79.45318085745906,21.092369815384377],[79.452326405902781,21.092382919782469],[79.451614561472411,21.092182215101804],[79.450749952295496,21.091705179608066],[79.450404204028516,21.091013827776823],[79.450048348298168,21.089830045432599],[79.449813666078541,21.089099174533619],[79.449429995434983,21.088404875983834],[79.448823185520553,21.087715986790919],[79.448069628111199,21.087201719487727],[79.447207923161145,21.086830527572506],[79.446723703833811,21.086838393270504],[79.446427507123843,21.086946068411343],[79.445987882565859,21.087373338350314],[79.445625156975709,21.088006640684455],[79.444927346715573,21.088539927509192],[79.444411349552666,21.088860082130353],[79.443967848205617,21.089043453005974],[79.443335293803841,21.089053383926192],[79.442694395296044,21.088607715563992],[79.441263280213533,21.087580411668824],[79.440204211755898,21.086580142181898],[79.439924413396184,21.085397634961261],[79.440127714850874,21.084138258524053],[79.440588760933494,21.082731460789255],[79.440687641891927,21.081928056914659],[79.440675045419511,21.081122752426431],[79.440444644647172,21.080743882348632],[79.439807917181028,21.080401786751224],[79.438911445679665,21.080310584676386],[79.438129435522825,21.080320242941568],[79.437571694506062,21.080329124854689],[79.437050702885344,21.080338631929102],[79.436865523787461,21.080409077677839],[79.436757807422808,21.080655666467592],[79.437025059588564,21.080966163817816],[79.437139364089944,21.081138334735581],[79.437071180708571,21.081558117119904],[79.436598996923905,21.082336742703323],[79.435974771692898,21.082866641764298],[79.435312747548238,21.083260177909843],[79.43449265497955,21.083273766963849],[79.433185384321533,21.082943183187091],[79.431910405298325,21.082401516260202],[79.430785375106638,21.081963617464321],[79.429698372495963,21.081524059986322],[79.428989464072032,21.081429109937261],[79.428354219254913,21.08126411087305],[79.427790468247267,21.080888710391708],[79.427335998912227,21.080439271726064],[79.427035370805839,21.080270800904145],[79.426476448392634,21.080277320634668],[79.42576916441665,21.080288195379254],[79.425136695818296,21.08029574983529],[79.424355865579813,21.080307655485118],[79.423611829905312,21.080317889717048],[79.423052862784175,21.080326696424734],[79.422268641389849,21.080198217508041],[79.421818091010095,21.079925950096559],[79.421066891746364,21.079549604782901],[79.420620166607961,21.079521226473645],[79.420102444145328,21.079740053937826],[79.419437938138188,21.080133477481159],[79.418669109376367,21.080911547255191],[79.418376629753908,21.081267658038378],[79.418089785993672,21.08189989739563],[79.417835246055489,21.082321067694963],[79.417137187449768,21.082925528465147],[79.416659794884538,21.083211747567002],[79.416064996869864,21.083360228495636],[79.415244013124038,21.083231080212016],[79.414381875279545,21.082825186574286],[79.413853471307775,21.082273221423264],[79.413614902007694,21.081438715018109],[79.413676015794579,21.080632375697778],[79.41429981341112,21.080065757099295],[79.415328162494717,21.07917716529029],[79.415803080365592,21.078578073661618],[79.415939499665001,21.077805235914777],[79.415954954836508,21.076512757612591],[79.415866593764221,21.075641741006191],[79.415411755529163,21.075088749444792],[79.414724999925099,21.074051010460025],[79.413932152592437,21.073363378118998],[79.413252479509822,21.072778904388663],[79.412689783320104,21.072541481237174],[79.411907392501291,21.072447483544497],[79.411309384472986,21.07238656523019],[79.410712349992323,21.07215084271153],[79.409961181936154,21.071776743746501],[79.409392544467082,21.071155063534498],[79.409162927190408,21.070741656485076],[79.40878872191054,21.070640886348734],[79.408045837898868,21.070720068863587],[79.407488683473645,21.070763352158611],[79.406929754686843,21.070772098764888],[79.406222564576538,21.070780581636139],[79.405811943484395,21.070787286959984],[79.405624147902913,21.070616122495551],[79.405691876841232,21.070161844671119],[79.406054661714222,21.069595353594899],[79.4064163012454,21.068962135228379],[79.406407114316963,21.068368513209975],[79.40588064743261,21.068097186898513],[79.405286253558714,21.068103014220469],[79.404835101733767,21.06786519007154],[79.404120348420136,21.067385880504105],[79.403402863183715,21.06673400205981],[79.402881048518296,21.066600759990525],[79.402502942518979,21.066325088687936],[79.402241861032849,21.066329771291091],[79.401720420157787,21.066302342839137],[79.401342403769519,21.065959963580667],[79.400654933242294,21.064779537143576],[79.400347270577967,21.064224451437813],[79.400034735103702,21.063356448147477],[79.400017130647257,21.063317039035912],[79.399679002338956,21.062255373043929],[79.399376060332145,21.061585356268527],[79.399060891655154,21.061225659381122],[79.398610685985901,21.06106604063913],[79.397970012499215,21.061183747758108],[79.397350074121135,21.061430624854015],[79.396733084818266,21.061714354185359],[79.396072763217774,21.061834011993415],[79.395312631402092,21.061733413541575],[79.394539370411977,21.060868904028659],[79.394254962972909,21.060068085604509],[79.394098791539236,21.05879104620664],[79.393826176125557,21.057516585421176],[79.393538263720458,21.055402277725012],[79.393353017043694,21.053487575913174],[79.393127377685033,21.052814292021818],[79.39241020127416,21.051656323692072],[79.391992740611229,21.051205126515583],[79.391739263606311,21.051136315676931],[79.391135781634418,21.051109724052029],[79.390413728029813,21.051007461937729],[79.389431537499462,21.050367020743273],[79.388403366101016,21.049449747182958],[79.387868993319216,21.048777984505076],[79.387494825836214,21.048493145189557],[79.38688818614699,21.048316967734326],[79.386109493487268,21.048291905851151],[79.385197348714087,21.048324320133911],[79.384146402198297,21.048375010721823],[79.383310412329038,21.048459345480531],[79.382674354384278,21.048779484814816],[79.381960539325974,21.049190273925412],[79.380622118408297,21.049465946280407],[79.377667244465002,21.049579957732348],[79.376347096927034,21.049798407279287],[79.375064523112457,21.049851885801317],[79.373994155362226,21.049830859853241],[79.373466039654559,21.049711206834157],[79.373072843967691,21.049460501076684],[79.37273811718552,21.049226919550748],[79.372580527973227,21.048957335639873],[79.372553499560539,21.048591127331637],[79.372643787654624,21.048116562668692],[79.372965104612817,21.047544833016747],[79.373094305967257,21.047084751680597],[79.373027069727485,21.046522322172866],[79.372747981356838,21.04614020076399],[79.372468355729211,21.045723566263284],[79.372459459366354,21.045123055612624],[79.372353557328736,21.044410435701806],[79.372165017970815,21.043664166081161],[79.371888103700527,21.043357988842853],[79.371571957114682,21.043053424198938],[79.370899124961241,21.04238837895743],[79.370183405283427,21.041354545388732],[79.369796895867054,21.04033798100475],[79.369366103376933,21.038899702688482],[79.3685023706485,21.036009307762665],[79.368140613551532,21.035227796769689],[79.367923298606627,21.035067571372004],[79.367476288176917,21.034999925134354],[79.366971435723599,21.03500716865161],[79.366580928855612,21.034993414677427],[79.365952726646796,21.034674162475209],[79.365156781350905,21.033551494154],[79.364383219807266,21.032597129411879],[79.363767874129437,21.031818056052831],[79.36321198822381,21.030502379320247],[79.362500876322969,21.037499208543878],[79.361881054874743,21.043826669754672],[79.358893428218977,21.047915652202907],[79.361943441083582,21.052089422803984],[79.353868031327437,21.061395565534408],[79.347839310272235,21.063116770218642],[79.343826133821139,21.066050841311426],[79.33842619826882,21.067593661115723],[79.33652661434607,21.074233268642967],[79.32579358046776,21.075793976428834],[79.32423287618532,21.086526998754806],[79.320834998003306,21.087499127267332],[79.320170624186346,21.094932419183269],[79.314454045432129,21.096399522211108],[79.310543377992872,21.099431712814877],[79.300889427670768,21.100706944573382],[79.299431321557961,21.106378921273063],[79.296399124001226,21.110289593275763],[79.295266517679536,21.114708530305521],[79.292234356917803,21.118623624723345],[79.291097314275049,21.123042653327364],[79.267232138598558,21.147790643893686],[79.266099523203877,21.152209592583574],[79.26158251649268,21.157627419036984],[79.251955258576189,21.158902731868444],[79.238404124078087,21.171477372688528],[79.237498924680551,21.175000105349316],[79.243875404135693,21.17556637160288],[79.247790493271424,21.17859859752841],[79.252209484981634,21.179735663347682],[79.256249398520538,21.182865931529083],[79.260289310128073,21.179735618072591],[79.268877576344408,21.178598580029227],[79.272917545749536,21.175468270570239],[79.276957512881935,21.178598576642578],[79.289710519735308,21.179735587431058],[79.295088168121353,21.183900394803928],[79.299355565111895,21.182263892025286],[79.300662075714513,21.167566739942206],[79.306378639951973,21.166099658464955],[79.322788116109137,21.150568671602908],[79.341667950619907,21.149997876717418],[79.342635572365495,21.146229902205398],[79.347790321923824,21.14223461469707],[79.356378529435261,21.141097553153777],[79.364453978528616,21.133900519612833],[79.368877415210648,21.132767904469684],[79.381122030473321,21.121401638158336],[79.386789577697115,21.119948025517399],[79.388203102856806,21.109263981128365],[79.397790174764836,21.100568718905169],[79.410543191221194,21.09943168122113],[79.414458319757031,21.096399487473253],[79.418877304559203,21.095266866401225],[79.42278787155783,21.092234721162377],[79.441667760479547,21.091668387795679],[79.445832516576587,21.091668359516714],[79.445832516576587,21.095833165263635],[79.447085538190365,21.100577675593641],[79.453435292136987,21.099137402907722],[79.454356798936857,21.092342367835514],[79.454186089675019,21.092354662834641]]]]}},{"type":"Feature","properties":{"SUB_AREA":43.9,"COAST":0,"DIST_MAIN":852.8},"geometry":{"type":"MultiPolygon","coordinates":[[[[79.341667950619907,21.149997876717418],[79.344089220741409,21.150354634682415],[79.349640860212602,21.155874932930466],[79.350354268452563,21.160757648384219],[79.357979341509861,21.168409496608909],[79.358688303026284,21.173256564989792],[79.362148559080765,21.176743599894763],[79.362500876322969,21.179164870690016],[79.366665680282239,21.179164891162621],[79.366665680282239,21.175000050722765],[79.370834937046652,21.175000023387032],[79.371972037019873,21.170567748845674],[79.376957274681715,21.174433787065333],[79.383333763982392,21.175000073656754],[79.387498576574473,21.175000051064124],[79.388234373014214,21.167468619703584],[79.397839222590704,21.158951771169299],[79.403239219695578,21.157408916151045],[79.405094233588727,21.15092533461598],[79.411733824919352,21.149030246051552],[79.413303362946834,21.138234796104413],[79.42083479864624,21.137499036765089],[79.421401153680293,21.131122510004666],[79.424433305306167,21.127211914718092],[79.425565967691725,21.122788461884351],[79.428598154046455,21.118877799484643],[79.429868927412315,21.109255091813537],[79.435291263480309,21.104733560180456],[79.440816052406461,21.103315505247984],[79.441667760479547,21.099998016950398],[79.441667760479547,21.091668387795679],[79.42278787155783,21.092234721162377],[79.418877304559203,21.095266866401225],[79.414458319757031,21.096399487473253],[79.410543191221194,21.09943168122113],[79.397790174764836,21.100568718905169],[79.388203102856806,21.109263981128365],[79.386789577697115,21.119948025517399],[79.381122030473321,21.121401638158336],[79.368877415210648,21.132767904469684],[79.364453978528616,21.133900519612833],[79.356378529435261,21.141097553153777],[79.347790321923824,21.14223461469707],[79.342635572365495,21.146229902205398],[79.341667950619907,21.149997876717418]]]]}}]}
+  };
+
+  // ── Layer store ──
+  const layerRegistry = {
+    rbc_canal: { url: 'RBC%20GeoJson/canal.geojson', layer: null, opacity: 1 },
+    rbc_hydro: { url: 'data/RBC/hydro.geojson', layer: null, opacity: 1 },
+    rbc_eod:   { url: 'data/RBC/EOD_{year}.geojson', layer: null, year: 2018, opacity: 1 },
+    rbc_ros:   { url: 'data/RBC/ROS_{year}.geojson', layer: null, year: 2018, opacity: 1 },
+    rbc_wps:   { url: 'data/RBC/WPS_{year}.geojson', layer: null, year: 2018, opacity: 1 },
+    rbc_dem:   { url: 'data/RBC/DEM_{year}.geojson', layer: null, year: 2018, opacity: 1 },
+    rbc_lulc:  { url: 'data/RBC/LULC_{year}.geojson', layer: null, year: 2018, opacity: 1 },
+    rbc_rain:  { url: 'data/RBC/Rainfall_{year}.geojson', layer: null, year: 2018, opacity: 1 },
+    lbc_canal: { url: 'LBC%20GeoJson/canal.geojson', layer: null, opacity: 1 },
+    lbc_hydro: { url: 'data/LBC/hydro.geojson', layer: null, opacity: 1 },
+    lbc_eod:   { url: 'data/LBC/EOD_{year}.geojson', layer: null, year: 2018, opacity: 1 },
+    lbc_ros:   { url: 'data/LBC/ROS_{year}.geojson', layer: null, year: 2018, opacity: 1 },
+    lbc_wps:   { url: 'data/LBC/WPS_{year}.geojson', layer: null, year: 2018, opacity: 1 },
+    lbc_dem:   { url: 'data/LBC/DEM_{year}.geojson', layer: null, year: 2018, opacity: 1 },
+    lbc_lulc:  { url: 'data/LBC/LULC_{year}.geojson', layer: null, year: 2018, opacity: 1 },
+    lbc_rain:  { url: 'data/LBC/Rainfall_{year}.geojson', layer: null, year: 2018, opacity: 1 },
+    lulc_main: { layer: null, year: 2018, opacity: 1 },
+    cropmap_main: { layer: null, year: 2018, opacity: 1 },
+  };
+
+  function getUrl(id) {
+    const reg = layerRegistry[id];
+    return reg.url.replace('{year}', reg.year || '');
+  }
+
+  // Convert UTM Zone 44N (EPSG:32644) to WGS84 lat/lng
+  function utmToLatLng(easting, northing) {
+    const a = 6378137.0, f = 1 / 298.257223563;
+    const b = a * (1 - f), e2 = 1 - (b * b) / (a * a);
+    const k0 = 0.9996, zone = 44;
+    const lon0 = ((zone - 1) * 6 - 180 + 3) * Math.PI / 180;
+    const x = easting - 500000, y = northing;
+    const M = y / k0;
+    const mu = M / (a * (1 - e2 / 4 - 3 * e2 * e2 / 64));
+    const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+    const phi1 = mu + (3 * e1 / 2 - 27 * e1 * e1 * e1 / 32) * Math.sin(2 * mu)
+      + (21 * e1 * e1 / 16 - 55 * e1 * e1 * e1 * e1 / 32) * Math.sin(4 * mu)
+      + (151 * e1 * e1 * e1 / 96) * Math.sin(6 * mu);
+    const N1 = a / Math.sqrt(1 - e2 * Math.sin(phi1) * Math.sin(phi1));
+    const T1 = Math.tan(phi1) * Math.tan(phi1);
+    const C1 = e2 / (1 - e2) * Math.cos(phi1) * Math.cos(phi1);
+    const R1 = a * (1 - e2) / Math.pow(1 - e2 * Math.sin(phi1) * Math.sin(phi1), 1.5);
+    const D = x / (N1 * k0);
+    const lat = phi1 - (N1 * Math.tan(phi1) / R1) * (D * D / 2
+      - (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * e2 / (1 - e2)) * D * D * D * D / 24);
+    const lon = lon0 + (D - (1 + 2 * T1 + C1) * D * D * D / 6) / Math.cos(phi1);
+    return [lat * 180 / Math.PI, lon * 180 / Math.PI];
+  }
+
+  function convertLULCCoords(geojson) {
+    const clone = JSON.parse(JSON.stringify(geojson));
+    clone.features.forEach(f => {
+      const convertRing = ring => ring.map(([e, n]) => { const ll = utmToLatLng(e, n); return [ll[1], ll[0]]; });
+      const geom = f.geometry;
+      if (geom.type === 'Polygon') geom.coordinates = geom.coordinates.map(convertRing);
+      else if (geom.type === 'MultiPolygon') geom.coordinates = geom.coordinates.map(p => p.map(convertRing));
+    });
+    return clone;
+  }
+
+  const lulcColors = {
+    1:  '#1e90ff', 2: '#228b22', 4: '#00ced1',
+    5:  '#ff8c00', 7: '#a9a9a9', 8: '#f5f5dc', 11: '#dc143c'
+  };
+
+  const cropmapColors = {
+    1: '#e41a1c', 2: '#377eb8', 3: '#4daf4a',
+    4: '#984ea3', 5: '#ff7f00'
+  };
+
+  function setOpacity(id, value) {
+    const reg = layerRegistry[id];
+    if (!reg) return;
+    reg.opacity = value / 100;
+    // sync all sliders and labels that control this layer id
+    document.querySelectorAll('.opacity-row').forEach(row => {
+      const slider = row.querySelector('input[type=range]');
+      if (slider && slider.getAttribute('oninput') && slider.getAttribute('oninput').includes("'" + id + "'")) {
+        slider.value = value;
+        row.querySelector('.opacity-val').textContent = value + '%';
+      }
+    });
+    if (reg.layer) {
+      reg.layer.setStyle({ fillOpacity: reg.opacity, opacity: reg.opacity });
+    }
+  }
+
+  function showOpacityRows(id) {
+    document.querySelectorAll('.opacity-row').forEach(row => {
+      const s = row.querySelector('input[type=range]');
+      if (s && s.getAttribute('oninput') && s.getAttribute('oninput').includes("'" + id + "'")) row.classList.add('visible');
+    });
+  }
+  function hideOpacityRows(id) {
+    document.querySelectorAll('.opacity-row').forEach(row => {
+      const s = row.querySelector('input[type=range]');
+      if (s && s.getAttribute('oninput') && s.getAttribute('oninput').includes("'" + id + "'")) row.classList.remove('visible');
+    });
+  }
+
+  function toggleLayer(id, checkbox) {
+    const reg = layerRegistry[id];
+    if (!reg) return;
+    if (checkbox.checked) {
+      showOpacityRows(id);
+      if (id.includes('lulc')) {
+        const lulcMap = { 2018: LULC_2018_DATA, 2019: LULC_2019_DATA, 2020: LULC_2020_DATA, 2021: LULC_2021_DATA, 2022: LULC_2022_DATA, 2023: LULC_2023_DATA };
+        const rawData = lulcMap[reg.year];
+        if (!rawData) { alert('LULC data not loaded for ' + reg.year); checkbox.checked = false; hideOpacityRows(id); return; }
+        const data = convertLULCCoords(rawData);
+        document.getElementById('lulc-legend').style.display = 'block';
+        reg.layer = L.geoJSON(data, {
+          style: f => { const c = lulcColors[f.properties.value] || '#aaaaaa'; return { color: '#333', weight: 0.5, fillColor: c, fillOpacity: reg.opacity }; },
+          onEachFeature: (f, l) => { if (f.properties) l.bindPopup(Object.entries(f.properties).map(([k,v]) => '<b>'+k+':</b> '+v).join('<br>')); }
+        }).addTo(map);
+        if (reg.layer.getBounds().isValid()) map.fitBounds(reg.layer.getBounds());
+      } else if (id === 'cropmap_main') {
+        const cropMap = { 2018: CROPMAP_2018_DATA, 2019: CROPMAP_2019_DATA, 2020: CROPMAP_2020_DATA, 2021: CROPMAP_2021_DATA, 2022: CROPMAP_2022_DATA, 2023: CROPMAP_2023_DATA };
+        const data = cropMap[reg.year];
+        if (!data) { alert('Cropmap data not loaded for ' + reg.year); checkbox.checked = false; hideOpacityRows(id); return; }
+        document.getElementById('cropmap-legend').style.display = 'block';
+        reg.layer = L.geoJSON(data, {
+          style: f => { const c = cropmapColors[f.properties.value] || '#aaaaaa'; return { color: '#333', weight: 0.5, fillColor: c, fillOpacity: reg.opacity }; },
+          onEachFeature: (f, l) => { if (f.properties) l.bindPopup(Object.entries(f.properties).map(([k,v]) => '<b>'+k+':</b> '+v).join('<br>')); }
+        }).addTo(map);
+        if (reg.layer.getBounds().isValid()) map.fitBounds(reg.layer.getBounds());
+      } else {
+        const inlineData = { rbc_canal: RBC_CANAL_DATA, lbc_canal: LBC_CANAL_DATA };
+        const data = inlineData[id];
+        if (!data) { alert('No data for: ' + id); checkbox.checked = false; hideOpacityRows(id); return; }
+        if (reg.layer) { map.removeLayer(reg.layer); reg.layer = null; }
+        reg.layer = L.geoJSON(data, {
+          style: () => ({ color: '#0ea5e9', weight: 1.5, fillOpacity: 0, opacity: reg.opacity }),
+          onEachFeature: (f, l) => { if (f.properties) l.bindPopup(Object.entries(f.properties).map(([k,v]) => '<b>'+k+':</b> '+v).join('<br>')); }
+        }).addTo(map);
+        if (reg.layer.getBounds().isValid()) map.fitBounds(reg.layer.getBounds());
+      }
+    } else {
+      hideOpacityRows(id);
+      if (reg.layer) { map.removeLayer(reg.layer); reg.layer = null; }
+      if (id.includes('lulc')) document.getElementById('lulc-legend').style.display = 'none';
+      if (id === 'cropmap_main') document.getElementById('cropmap-legend').style.display = 'none';
+    }
+  }
+
+  function setYear(id, year, btn) {
+    const reg = layerRegistry[id];
+    if (!reg) return;
+    btn.closest('.year-row').querySelectorAll('.yr').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    reg.year = year;
+    const cb = document.getElementById(id);
+    if (cb && cb.checked) {
+      if (reg.layer) { map.removeLayer(reg.layer); reg.layer = null; }
+      toggleLayer(id, cb);
+    }
+  }
+
+  // ── Panel toggle ──
+  let panelOpen = true;
+  function togglePanel() {
+    panelOpen = !panelOpen;
+    const panel = document.getElementById('panel');
+    const btn = document.getElementById('toggle-btn');
+    const topbar = document.getElementById('topbar');
+    if (panelOpen) {
+      panel.style.width = '270px';
+      panel.style.minWidth = '270px';
+      btn.style.left = '270px';
+      btn.textContent = '◀';
+      topbar.style.left = '270px';
+      document.getElementById('coords-bar').style.left = '270px';
+    } else {
+      panel.style.width = '0';
+      panel.style.minWidth = '0';
+      btn.style.left = '0';
+      btn.textContent = '▶';
+      topbar.style.left = '0';
+      document.getElementById('coords-bar').style.left = '0';
+    }
+    const start = performance.now();
+    const duration = 300;
+    function animate() {
+      map.invalidateSize({ animate: false });
+      if (performance.now() - start < duration) requestAnimationFrame(animate);
+    }
+    requestAnimationFrame(animate);
+  }
+
+  // ── ROI boundary layers ──
+  let roiLayer = null;
+  let roiLayerGroup = null;
+  let currentROI = null;
+
+  let roiOpacity = 0.25;
+
+  function setROIOpacity(value) {
+    roiOpacity = value / 100;
+    document.getElementById('roi-opacity-val').textContent = value + '%';
+    if (roiLayerGroup) {
+      roiLayerGroup.eachLayer(l => {
+        if (l.eachLayer) {
+          l.eachLayer(sub => sub.setStyle({ fillOpacity: roiOpacity }));
+        } else {
+          l.setStyle({ fillOpacity: roiOpacity });
+        }
+      });
+    }
+  }
+
+  function loadROIBoundary(canal) {
+    if (roiLayerGroup && currentROI === canal) {
+      map.removeLayer(roiLayerGroup);
+      roiLayerGroup = null;
+      roiLayer = null;
+      currentROI = null;
+      document.getElementById('roi-opacity-row').style.display = 'none';
+      return;
+    }
+    if (roiLayerGroup) { map.removeLayer(roiLayerGroup); roiLayerGroup = null; }
+    if (roiLayer) { roiLayer = null; }
+
+    roiLayerGroup = L.featureGroup();
+
+    const addLayer = (data) => {
+      L.geoJSON(data, {
+        style: () => ({
+          color: '#818cf8',
+          weight: 2,
+          opacity: 1,
+          fillColor: '#818cf8',
+          fillOpacity: roiOpacity
+        }),
+        onEachFeature: (feature, layer) => {
+          if (feature.properties) {
+            layer.bindPopup(
+              Object.entries(feature.properties)
+                .map(([k,v]) => `<b>${k}:</b> ${v}`).join('<br>')
+            );
+          }
+        }
+      }).addTo(roiLayerGroup);
+    };
+
+    if (canal === 'both') {
+      addLayer(RBC_DATA);
+      addLayer(LBC_DATA);
+    } else {
+      const data = canal === 'rbc' ? RBC_DATA : LBC_DATA;
+      addLayer(data);
+    }
+
+    roiLayerGroup.addTo(map);
+    map.fitBounds(roiLayerGroup.getBounds());
+    currentROI = canal;
+    document.getElementById('roi-opacity-row').style.display = 'flex';
+  }
+
+  // ── Canal sub-tab switcher ──
+  function switchCanalTab(group, canal, tabEl) {
+    const grpBody = tabEl.closest('.grp-body');
+    grpBody.querySelectorAll('.canal-tab').forEach(t => t.classList.remove('active'));
+    tabEl.classList.add('active');
+    grpBody.querySelectorAll('.canal-pane').forEach(p => p.classList.remove('active'));
+    grpBody.querySelector('#' + group + '-' + canal).classList.add('active');
+  }
+
+  // ── ROI Selector ──
+  function selectROI(canal, el) {
+    document.querySelectorAll('.roi-option').forEach(o => o.classList.remove('active'));
+    el.classList.add('active');
+    document.querySelector('.roi-btn span').textContent =
+      canal === 'rbc' ? 'RBC — Right Bank Canal' : canal === 'lbc' ? 'LBC — Left Bank Canal' : 'Both (LBC + RBC)';
+    loadROIBoundary(canal);
+  }
+
+  // ── Accordion ──
+  function toggleGrp(header) {
+    const body = header.nextElementSibling;
+    const arrow = header.querySelector('span');
+    body.classList.toggle('open');
+    arrow.textContent = body.classList.contains('open') ? '▼' : '▶';
+  }
+
+  // Auto-load default layers (disabled - user can click to toggle)
+  // window.addEventListener('load', () => {
+  //   loadROIBoundary('rbc');
+  // });
+
+  // ── LULC Legend ──
+  const lulcLegend = L.control({ position: 'bottomleft' });
+  lulcLegend.onAdd = function() {
+    const div = L.DomUtil.create('div');
+    div.style.cssText = 'background:#ffffff;color:#1e3a5f;padding:10px 14px;border-radius:8px;font-size:0.78rem;line-height:1.8;box-shadow:0 2px 8px rgba(0,0,0,0.15);display:none;border:1px solid #bfdbfe;margin-bottom:32px;';
+    div.id = 'lulc-legend';
+    div.innerHTML = '<b style="color:#0369a1;letter-spacing:1px;">LULC LEGEND</b><br>' + [
+      [1,  '#1e90ff', 'Water'],
+      [11, '#dc143c', 'Built Area'],
+      [2,  '#228b22', 'Trees'],
+      [4,  '#00ced1', 'Flooded Vegetation'],
+      [5,  '#ff8c00', 'Crops'],
+      [7,  '#a9a9a9', 'Bare Ground'],
+      [8,  '#f5f5dc', 'Rangeland'],
+    ].map(([v, c, l]) =>
+      `<div style="display:flex;align-items:center;gap:7px;">
+        <span style="width:14px;height:14px;background:${c};border-radius:3px;display:inline-block;border:1px solid #555;"></span>${l}
+      </div>`
+    ).join('');
+    return div;
+  };
+  lulcLegend.addTo(map);
+
+  // ── Cropmap Legend ──
+  const cropmapLegend = L.control({ position: 'bottomleft' });
+  cropmapLegend.onAdd = function() {
+    const div = L.DomUtil.create('div');
+    div.style.cssText = 'background:#ffffff;color:#1e3a5f;padding:10px 14px;border-radius:8px;font-size:0.78rem;line-height:1.8;box-shadow:0 2px 8px rgba(0,0,0,0.15);display:none;border:1px solid #bfdbfe;margin-bottom:32px;';
+    div.id = 'cropmap-legend';
+    div.innerHTML = '<b style="color:#0369a1;letter-spacing:1px;">CROP MAP LEGEND</b><br>' + [
+      [1, '#e41a1c', 'Crop 1'],
+      [2, '#377eb8', 'Crop 2'],
+      [3, '#4daf4a', 'Crop 3'],
+      [4, '#984ea3', 'Crop 4'],
+      [5, '#ff7f00', 'Crop 5'],
+    ].map(([v, c, l]) =>
+      `<div style="display:flex;align-items:center;gap:7px;">
+        <span style="width:14px;height:14px;background:${c};border-radius:3px;display:inline-block;border:1px solid #555;"></span>${l}
+      </div>`
+    ).join('');
+    return div;
+  };
+  cropmapLegend.addTo(map);
+
+  // ── Search / Filter ──
+  function filterLayers(query) {
+    const q = query.toLowerCase();
+    document.querySelectorAll('.layer-row').forEach(row => {
+      const label = row.querySelector('label').textContent.toLowerCase();
+      const match = label.includes(q);
+      row.style.display = match ? 'flex' : 'none';
+      // also show/hide year row below
+      const next = row.nextElementSibling;
+      if (next && next.classList.contains('year-row')) {
+        next.style.display = match ? 'flex' : 'none';
+      }
+    });
+  }
+</script>
+
+</body>
+</html>
